@@ -1,9 +1,7 @@
 from room import Room
 from player import Player
 from world import World
-from util import Stack
-from graph import Graph
-
+from util import Queue
 import random
 from ast import literal_eval
 
@@ -20,7 +18,6 @@ map_file = "maps/main_maze.txt"
 
 # Loads the map into a dictionary
 room_graph = literal_eval(open(map_file, "r").read())
-# print(room_graph, "<<<<<<<")
 world.load_graph(room_graph)
 
 # Print an ASCII map
@@ -32,147 +29,122 @@ player = Player(world.starting_room)
 # traversal_path = ['n', 'n']
 traversal_path = []
 
+'''
+nifty object to assist in reversing direction during traversal
+'''
 
-def get_random_direction(available_directions, current_room):
-    # sometime we get available directions to be an empty array because we have explored all that we want to try, whether we are going forward (unexplored_dir) or backwards(explored_dir)
-    # if there are available direction
-    if len(available_directions) > 0:
-        # we get a random unexplored direction
-        numb = random.randrange(0, len(available_directions))
-        # we return it
-        return available_directions[numb]
-    # if no available directions, we get a random direction from the ones
-    # available to the room just to keep going
-    else:
-        dir = []
-        directions = current_room.get_exits()
-        for d in directions:
-            dir.append(d)
-        numb = random.randrange(0, len(dir))
-        # we return the room
-        return dir[numb]
-
-
-# initiate the graph
-graph = Graph()
-# we keep track of the used directions for when we come back
-used_directions = {}
-# dict with directions and oppositions. Handy when we are setting
-# directions in the graph for prev room and current room
-options = {
+reverse_direction = {
     'n': 's',
     's': 'n',
     'e': 'w',
-    'w': 'e'
+    'w': 'e',
 }
-# we create a Stack
-s = Stack()
-# the stack will keep track of a combination of direction that we come from, previous room, and the current player room. In this format: # [(direction, prev room), current_room]
-# we push the first room. Since there is no precedent nor previous room,
-# both will be None
-s.push([[[None, None], player.current_room]])
-# while the stack is not empty
-while s.size() > 0:
-    # we set a condition to exit the loop. Once we have traversed the whole
-    # maze, and we have as many room as there were in the original file, we
-    # stop. Othwerwise, we execute the code.
-    if len(graph.vertices) != len(room_graph):
-        # We pop the item on top of the Stack
-        path = s.pop()
-        # we extract the room. I know, it can be done with destructuring. This
-        # is a first pass
-        room = path[-1][1]
-        # we extract the direction where we are coming from
-        incoming_direction = path[-1][0][0]
-        # we extract the previous room
-        prev_room = path[-1][0][1]
-        # we get all available direction in the existing room
-        directions = room.get_exits()
-        # if we have not been in this room, there won't be any room in our
-        # graph. Therefore, we need to create it.
-        if room.id not in graph.vertices:
-            # we create the room
-            graph.add_vertex(room.id)
-            # and we set all available directions to "?" because we don't know
-            # yet where they all lead to. But we know they are available.
-            for d in directions:
-                graph.vertices[room.id][d] = "?"
-        # if it is not the first time we run this code (we are not in starting
-        # room 0) we need to replace "?" with the directions that we are moving
-        # from and into. We compare this to None to knoe whether it is the
-        # first time we run this code (we are in room 0). If it is, incoming
-        # direction will be None.
-        if incoming_direction is not None:
-            # we find the opposite direction we took
-            opposite_direction = options[incoming_direction]
-            # we set opposite direction in our room (i.e. if we took 'n' in the
-            # previous room, we need to set 's' in current room)
-            graph.vertices[room.id][opposite_direction] = prev_room.id
-            # we set the direction we took in the previous room (i.e. if we
-            # took 'n' we set 'n' to the id of the current room)
-            graph.vertices[prev_room.id][incoming_direction] = room.id
-        # the aim of the challenge is to traverse all the maze. For that, we need to find the directions in the current room that are marked as "?". We also want to keep track of the one we have taken in order to back up when we are tracing back our steps (i.e. when we reach dead end, we need to go back)
-        # the following code takes care of knowing which directions are still unexplored and which ones have been taken.
-        # directions with "?" on it
-        unexplored_dir = []
-        # direction that have not a "?" on it
-        explored_dir = []
-        # we iterate over all directions that our room has available
-        for d in graph.vertices[room.id]:
-            # if the direction has a "?" on it, it is available.
-            if graph.vertices[room.id][d] == "?":
-                # Therefore, we add it to the list of unexplored directions
-                unexplored_dir.append(d)
-            # if we just entered the room for the first time, there won't be
-            # any room in 'used_directions' and all of them are "?". Also, if
-            # the direction we are looping through has not been used
-            if room.id not in used_directions or d not in used_directions[room.id]:
-                # we add the direction to the list of explored directions
-                explored_dir.append(d)
-        # if there are unexplored directions
-        if len(unexplored_dir) > 0:
-            # we get a random direction to explore
-            next_dir = get_random_direction(unexplored_dir, room)
-            # we add the direction to the list of directions used in 'used_directions'.
-            # If the room in that dict doesn't exist yet, we create
-            if room.id not in used_directions:
-                used_directions[room.id] = set()
-            # if the room exists, we add the direction
-            used_directions[room.id].add(next_dir)
-            # we move the player to the next direction
-            player.travel(next_dir)
-            # we add the path to the path
-            traversal_path.append(next_dir)
-            # we duplicate the current trace of rooms in the Stack
-            new_path = list(path)
-            # we add new information based on the current player and direction
-            # and room where we come from
-            new_path.append([[next_dir, room], player.current_room])
-            # we push it to the stack
-            s.push(new_path)
-        # if len(unexplored_dir) == 0, it means we have reached a dead end. We
-        # need to go back.
-        else:
-            # we get a random direction from the explored directions that are
-            # not the ones we have used
-            next_dir = get_random_direction(explored_dir, room)
-            # same logic as before
-            if room.id not in used_directions:
-                used_directions[room.id] = set()
-            used_directions[room.id].add(next_dir)
-            player.travel(next_dir)
-            traversal_path.append(next_dir)
-            new_path = list(path)
-            new_path.append([[next_dir, room], player.current_room])
-            s.push(new_path)
-    else:
-        # we empty the stack to exit the loop
-        while s.size() > 0:
-            s.pop()
+
+# initialize a graph object to hold our traversed maze
+graph = {}
+
+'''
+Implementing Breadth First Search to find the closest room with unexplored exits
+'''
 
 
-# print(graph.vertices, "<<<< vertices <<<<")
-# print(traversal_path, "<<< path <<<")
+def bfs(graph, starting_room):
+    # create an empty queue to hold rooms
+    q = Queue()
+    # create an empty set to store visited rooms
+    visited_set = set()
+    # enqueue a path to the starting room
+    q.enqueue([starting_room])
+    # while the queue is not empty
+    while q.size():
+        # dequeue the first path from the front of the list
+        path = q.dequeue()
+        # get the last room in the path
+        room_to_check = path[-1]
+        # if room to check is not in visited set:
+        if room_to_check not in visited_set:
+            # add the room to visited
+            visited_set.add(room_to_check)
+            # check if room to check has any unexplored exits
+            for room in graph[room_to_check]:
+                # if unexplored
+                if graph[room_to_check][room] == '?':
+                    # return the path taken to get here
+                    return path
+            # append paths
+            for each_exit in graph[room_to_check]:
+                # set the exit to be tracked to a variable
+                neighboring_room = graph[room_to_check][each_exit]
+                # make a copy of the path
+                new_path = list(path)
+                # add the neighboring room to the copied path
+                new_path.append(neighboring_room)
+                # enqueue the path taken
+                q.enqueue(new_path)
+
+
+# while graph is smaller than the given 500
+while len(graph) < len(room_graph):
+    # save the current room id into a variable
+    current_room_id = player.current_room.id
+    # if the current_room_id is not in the graph yet
+    if current_room_id not in graph:
+        # place the room in the graph with no exits yet
+        graph[current_room_id] = {}
+        # for each available exit in the room
+        for available_exit in player.current_room.get_exits():
+            # set all exit values to '?' the first time visiting the room
+            graph[current_room_id][available_exit] = "?"
+    # at this point room exists in graph or has been created, if new
+    # for each available exit in the room
+    for direction in graph[current_room_id]:
+        # if direction is not permissible from the room
+        if direction not in graph[current_room_id]:
+            break
+        # if direction is permissible but still "?"
+        if graph[current_room_id][direction] == '?':
+            # set the room's exit to the direction
+            room_exit = direction
+            # if there is an exit in the dictionary
+            if room_exit is not None:
+                # append the travel direction to traversal_path
+                traversal_path.append(room_exit)
+                # move in that direction
+                player.travel(room_exit)
+                # set new room id to the current room
+                new_room_id = player.current_room.id
+                # if the new_room_id is not in the graph yet
+                if new_room_id not in graph:
+                    # add the room into graph
+                    graph[new_room_id] = {}
+                    # for each available exit in the room
+                    for available_exit in player.current_room.get_exits():
+                        # set all exit values to '?' the first time visiting the room
+                        graph[new_room_id][available_exit] = '?'
+            # update previous room's direction/exit
+            graph[current_room_id][room_exit] = new_room_id
+            # update current room's direction/exit to be opposite
+            graph[new_room_id][reverse_direction[room_exit]] = current_room_id
+            # Sst the current_room_id to the new room id
+            current_room_id = new_room_id
+
+    # utilize BFS, passing in graph and current room
+    path_of_rooms = bfs(graph, player.current_room.id)
+    # convert rooms to directions by traversing all rooms in the path_of_rooms and recording which direction was traveled
+    if path_of_rooms is not None:
+        # for each room in the path_of_rooms
+        for room in path_of_rooms:
+            # for each {n, s, e, w} of each room in path_of_rooms
+            for available_exit in graph[current_room_id]:
+                # if the available_exit's value is the room in path_of_rooms
+                if graph[current_room_id][available_exit] == room:
+                    # add this available_exit to traversal list
+                    traversal_path.append(available_exit)
+                    # move in that direction
+                    player.travel(available_exit)
+    # reset the current_room_id to be the room just moved into
+    current_room_id = player.current_room.id
+
 
 # TRAVERSAL TEST
 visited_rooms = set()
@@ -184,22 +156,22 @@ for move in traversal_path:
     visited_rooms.add(player.current_room)
 
 if len(visited_rooms) == len(room_graph):
-    print(
-        f"TESTS PASSED: {len(traversal_path)} moves, {len(visited_rooms)} rooms visited")
+    print(f"TESTS PASSED: {len(traversal_path)} moves, {len(visited_rooms)} rooms visited")
 else:
     print("TESTS FAILED: INCOMPLETE TRAVERSAL")
     print(f"{len(room_graph) - len(visited_rooms)} unvisited rooms")
 
 
+
 #######
 # UNCOMMENT TO WALK AROUND
 #######
-player.current_room.print_room_description(player)
-while True:
-    cmds = input("-> ").lower().split(" ")
-    if cmds[0] in ["n", "s", "e", "w"]:
-        player.travel(cmds[0], True)
-    elif cmds[0] == "q":
-        break
-    else:
-        print("I did not understand that command.")
+# player.current_room.print_room_description(player)
+# while True:
+#     cmds = input("-> ").lower().split(" ")
+#     if cmds[0] in ["n", "s", "e", "w"]:
+#         player.travel(cmds[0], True)
+#     elif cmds[0] == "q":
+#         break
+#     else:
+#         print("I did not understand that command.")
